@@ -56,9 +56,9 @@ def _run_output(command):
 # Helper to compile and run the provided C code
 def _run_c_code(code):
     temp = tempfile.NamedTemporaryFile(suffix='.c', delete=False)
-    temp.write(code)
     temp.close()
-    run('gcc -w %s' % temp.name)
+    open(temp.name, 'w').write(code)
+    _run('gcc -w %s' % temp.name)
     os.remove(temp.name)
     result = _run_output('./a.out')
     os.remove('a.out')
@@ -99,7 +99,7 @@ def _gen_magic_info(repo):
         }
         '''
         magic = re.search(r'(#define\s+MAGIC[^\n]+)\n', data).group(0)
-        return int(run_c_code(magic + code))
+        return int(_run_c_code(magic + code))
 
     def extract_python_version(data):
         code = '''
@@ -157,7 +157,7 @@ class _Revision:
         # Given a map of opcode names to opcode integers, create a reverse mapping
         # that removes pseudo-opcodes and adds missing opcodes
         self.opcode_to_name = {}
-        for name in self.name_to_opcode.keys():
+        for name in list(self.name_to_opcode.keys()):
             opcode = self.name_to_opcode[name]
             if name in ['SLICE', 'STORE_SLICE', 'DELETE_SLICE']:
                 del self.name_to_opcode[name]
@@ -202,20 +202,21 @@ def _differentiate_opcodes_by_argument(revisions):
 # Return gen() but cache the results in the file named cache
 def _get_cached(cache, gen):
     try:
-        return pickle.load(open(cache))
+        return pickle.load(open(cache, 'rb'))
     except:
         print('generating ' + cache)
         result = gen()
-        pickle.dump(result, open(cache, 'w'))
+        pickle.dump(result, open(cache, 'wb'))
         return result
 
 # Load the revision info from the cache, or compute it on the first run
 _repo = _PythonRepo()
-_magic_info = _get_cached('magic_info.pickle', lambda: gen_magic_info(_repo))
-_opcodes = _get_cached('opcodes.pickle', lambda: gen_opcodes(_repo, _magic_info))
-_revisions = sorted([_Revision(m, o) for m, o in zip(_magic_info, _opcodes)], lambda a, b: b.magic - a.magic)
+_magic_info = _get_cached('magic_info.pickle', lambda: _gen_magic_info(_repo))
+_opcodes = _get_cached('opcodes.pickle', lambda: _gen_opcodes(_repo, _magic_info))
+_revisions = sorted([_Revision(m, o) for m, o in zip(_magic_info, _opcodes)], key=lambda x: x.magic)
 opcodes, have_argument = _differentiate_opcodes_by_argument(_revisions)
 
+# Return the revision with the magic number closest to magic
 def _magic_to_revision(magic):
     for rev in _revisions:
         if magic < rev.magic:
