@@ -152,6 +152,12 @@ def _gen_opcodes(repo, magic_info):
 class _Revision:
     def __init__(self, magic_info, opcodes):
         self.mercurial_revision, self.magic, self.python_version = magic_info
+
+        # Note that self.name_to_opcode contains a superset of the information
+        # available in self.opcode_to_name. For example, it will contain the
+        # HAVE_ARGUMENT marker, which isn't actually an opcode. All opcodes in
+        # self.opcode_to_name are the ones that will appear in compiled *.pyc
+        # bytecode.
         self.name_to_opcode = opcodes
 
         # Given a map of opcode names to opcode integers, create a reverse mapping
@@ -162,7 +168,8 @@ class _Revision:
             if name in ['SLICE', 'STORE_SLICE', 'DELETE_SLICE']:
                 del self.name_to_opcode[name]
                 for i in range(4):
-                    n, o = name + '_%d' % i, opcode + i
+                    n = name + '_%d' % i
+                    o = opcode + i
                     self.name_to_opcode[n] = o
                     self.opcode_to_name[o] = n
             elif name not in ['STOP_CODE', 'HAVE_ARGUMENT', 'EXCEPT_HANDLER']:
@@ -179,15 +186,16 @@ def _differentiate_opcodes_by_argument(revisions):
     opcode_names = set()
     for rev in revisions:
         opcode_names |= set(rev.opcode_to_name.values())
-    for name in opcode_names:
+    for name in list(opcode_names):
         has_arg = [rev.has_argument(name) for rev in revisions if name in rev.name_to_opcode]
         if any(has_arg) and not all(has_arg):
             for rev in revisions:
                 opcode = rev.name_to_opcode.get(name)
                 if opcode is not None and rev.has_argument(name):
                     del rev.name_to_opcode[name]
-                    rev.name_to_opcode[name + '_ARG'] = opcode
-                    rev.opcode_to_name[opcode] = name + '_ARG'
+                    name += '_ARG'
+                    rev.name_to_opcode[name] = opcode
+                    rev.opcode_to_name[opcode] = name
                     opcode_names.add(name)
 
     # Now that the argument status of each name is consistent across all
@@ -216,14 +224,16 @@ _opcodes = _get_cached('opcodes.pickle', lambda: _gen_opcodes(_repo, _magic_info
 _revisions = sorted([_Revision(m, o) for m, o in zip(_magic_info, _opcodes)], key=lambda x: x.magic)
 opcodes, have_argument = _differentiate_opcodes_by_argument(_revisions)
 
-# Return the revision with the magic number closest to magic
+# Return the revision with the given magic number. Just in case we try to
+# disassemble a *.pyc file with a magic version that doesn't match any ever
+# committed to the official repo, we return the revision with the smallest
+# magic number above magic.
 def _magic_to_revision(magic):
     for rev in _revisions:
-        if magic < rev.magic:
+        if rev.magic >= magic:
             return rev
 
-# Map magic numbers to revisions (TODO: what if magic number in the wild is
-# between our magic numbers?)
+# Map magic numbers to revisions
 def from_bytecode(bytecode, magic):
     revision = _magic_to_revision(magic)
     if revision and bytecode in revision.opcode_to_name:
