@@ -240,8 +240,8 @@ class _Disassembler:
         elif type == _TYPE_LONG:
             nbits = self.read_int32()
             if not nbits:
-                return 0L
-            n = 0L
+                return 0
+            n = 0
             for i in range(abs(nbits)):
                 digit = self.read_int16()
                 n |= digit << (i * 15)
