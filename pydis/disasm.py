@@ -17,7 +17,7 @@ disasm.DisassemblerException
     of the error.
 '''
 
-import op
+import pydis.op as op
 import sys
 import time
 import struct

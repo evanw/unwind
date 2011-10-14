@@ -6,5 +6,4 @@ from both Python 2 and Python 3. Example usage:
     print(pydis.dis('example.pyc'))
 '''
 
-import op
-from disasm import *
+from pydis.disasm import *
