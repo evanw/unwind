@@ -72,13 +72,16 @@ def _run_c_code(code):
 # Represents a clone of the official CPython repo, can return
 # different versions of a given file
 class _PythonRepo:
+    def __init__(self, path):
+        self.path = path
+
     def ensure_cloned(self):
-        if not os.path.exists('.repo'):
-            _run('hg clone http://hg.python.org/cpython .repo')
+        if not os.path.exists(self.path):
+            _run('cd "%s" && hg clone http://hg.python.org/cpython "%s"' % os.path.split(self.path))
 
     def revisions_for_file(self, file):
         self.ensure_cloned()
-        lines = _run_output('cd .repo && hg log %s' % file).split('\n')
+        lines = _run_output('cd "%s" && hg log %s' % (self.path, file)).split('\n')
         regex = re.compile(r'^changeset:\s+(\d+):')
         revisions = []
         for line in lines:
@@ -89,7 +92,7 @@ class _PythonRepo:
 
     def revision_of_file(self, file, revision):
         self.ensure_cloned()
-        return _run_output('cd .repo && hg cat -r %d %s' % (revision, file))
+        return _run_output('cd "%s" && hg cat -r %d "%s"' % (self.path, revision, file))
 
 # Step 1: Create a list of mercurial revision numbers, python marshal format
 # magic numbers, and python version names, returned as a list of 3-tuples
@@ -234,10 +237,11 @@ def _get_cached(cache, gen):
         return result
 
 # Load the revision info from the cache, or compute it on the first run
-_repo = _PythonRepo()
-_magic_info = _get_cached('magic_info.pickle', lambda: _gen_magic_info(_repo))
-_opcodes = _get_cached('opcodes.pickle', lambda: _gen_opcodes(_repo, _magic_info))
-_has_kwonlyargcount = _get_cached('has_kwonlyargcount.pickle', lambda: _gen_has_kwonlyargcount(_repo, _magic_info))
+_dir = os.path.dirname(os.path.abspath(__file__))
+_repo = _PythonRepo(os.path.join(_dir, '.repo'))
+_magic_info = _get_cached(os.path.join(_dir, 'magic_info.pickle'), lambda: _gen_magic_info(_repo))
+_opcodes = _get_cached(os.path.join(_dir, 'opcodes.pickle'), lambda: _gen_opcodes(_repo, _magic_info))
+_has_kwonlyargcount = _get_cached(os.path.join(_dir, 'has_kwonlyargcount.pickle'), lambda: _gen_has_kwonlyargcount(_repo, _magic_info))
 _revisions = sorted([_Revision(_m, _o, _h) for _m, _o, _h in zip(_magic_info, _opcodes, _has_kwonlyargcount)], key=lambda x: x.magic)
 opcodes, _has_argument = _differentiate_opcodes_by_argument(_revisions)
 
