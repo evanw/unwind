@@ -212,6 +212,9 @@ class _Disassembler:
     def read_int8(self):
         return struct.unpack('=b', self.file.read(1))[0]
 
+    def read_int16(self):
+        return struct.unpack('=h', self.file.read(2))[0]
+
     def read_int32(self):
         return struct.unpack('=i', self.file.read(4))[0]
 
@@ -231,7 +234,18 @@ class _Disassembler:
 
         # Numbers
         elif type == _TYPE_INT: return self.read_int32()
-        elif type == _TYPE_BINARY_FLOAT: return struct.unpack('=f', self.file.read(4))[0]
+        elif type == _TYPE_INT64: return struct.unpack('=q', self.file.read(8))[0]
+        elif type == _TYPE_BINARY_FLOAT: return struct.unpack('=d', self.file.read(8))[0]
+        elif type == _TYPE_BINARY_COMPLEX: return complex(*struct.unpack('=dd', self.file.read(16)))
+        elif type == _TYPE_LONG:
+            nbits = self.read_int32()
+            if not nbits:
+                return 0L
+            n = 0L
+            for i in range(abs(nbits)):
+                digit = self.read_int16()
+                n |= digit << (i * 15)
+            return n if nbits > 0 else -n
 
         # Strings
         elif type == _TYPE_STRING: return self.read_string_ascii()
