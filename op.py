@@ -1,36 +1,41 @@
 '''
 op.opcodes
-    A set of strings of opcode names. This set contains all opcodes from every
-    revision of Python, which are extracted directly from the official Python
-    Mercurial repository.
+    A set of strings of opcode names. This set contains all opcodes from
+    every revision of Python, which are extracted directly from the official
+    Python Mercurial repository.
 
-    These opcodes are normalized, which means a given opcode name will behave
-    identically across all revisions but will not necessarily have the same
-    official names. For example, the SET_ADD and LIST_APPEND opcodes have no
-    argument in some revisions of the interpreter and take an argument in other
-    revisions. This is handled by creating the separate SET_ADD_ARG and
-    LIST_APPEND_ARG opcodes and decoding to those instead for the affected
-    revisions.
+    These opcodes are normalized, which means a given opcode name will
+    behave identically across all revisions but will not necessarily have
+    the same official names. For example, the SET_ADD and LIST_APPEND
+    opcodes have no argument in some revisions of the interpreter and take
+    an argument in other revisions. This is handled by creating the separate
+    SET_ADD_ARG and LIST_APPEND_ARG opcodes and decoding to those instead
+    for the affected revisions.
 
     Pseudo-opcodes like STOP_CODE, HAVE_ARGUMENT, and EXCEPT_HANDLER (which
-    will never be found in compiled bytecode) are removed. Also, slice opcodes
-    like SLICE, STORE_SLICE, and DELETE_SLICE actually represent four opcodes
-    and are suffixed with _0, _1, _2, and _3.
+    will never be found in compiled bytecode) are removed. Also, slice
+    opcodes like SLICE, STORE_SLICE, and DELETE_SLICE actually represent
+    four opcodes and are suffixed with _0, _1, _2, and _3.
 
-op.have_argument
-    A subset of op.opcodes containing all opcodes that take arguments when
-    represented in bytecode.
+op.has_argument(opcode)
+    Returns True if opcode takes an argument when represented in bytecode,
+    otherwise returns False.
+
+op.has_kwonlyargcount(magic)
+    Returns True if the code objects in *.pyc files with the given magic
+    number will have the co_kwonlyargcount property, otherwise returns
+    False.
 
 op.from_bytecode(bytecode, magic)
-    Given opcode, a bytecode integer, and magic, the 32-bit magic number from
-    a marshalled *.pyc file, produce a string with the name of the opcode or
-    None for an invalid bytecode.
+    Given bytecode, an 8-bit integer, and magic, the 32-bit magic number
+    from a marshalled *.pyc file, produce a string with the name of the
+    opcode or None for an invalid bytecode.
 
 op.python_version_from_magic(magic)
-    Returns a string with the Python interpreter version ("2.5.1" for example).
-    Note that this string can contain letters and symbols and that there isn't
-    a one-to-one mapping between magic number and version string. It is most
-    useful for obtaining a human readable interpretation of a magic number.
+    Returns a string with the Python interpreter version ("2.7b2+" for
+    example). Note that there isn't a one-to-one mapping between magic
+    number and version string. It is most useful for obtaining a human
+    readable interpretation of a magic number.
 
 op.LOAD_NAME, op.STORE_NAME, ...
     All opcodes are available as global names so typos result in runtime
@@ -79,12 +84,12 @@ class _PythonRepo:
         for line in lines:
             match = regex.match(line)
             if match:
-                revisions.append(match.group(1))
+                revisions.append(int(match.group(1)))
         return list(reversed(revisions))
 
     def revision_of_file(self, file, revision):
         self.ensure_cloned()
-        return _run_output('cd .repo && hg cat -r %s %s' % (revision, file))
+        return _run_output('cd .repo && hg cat -r %d %s' % (revision, file))
 
 # Step 1: Create a list of mercurial revision numbers, python marshal format
 # magic numbers, and python version names, returned as a list of 3-tuples
@@ -148,10 +153,20 @@ def _gen_opcodes(repo, magic_info):
 
     return opcodes
 
+# Step 3: Find all revisions in which code objects have the co_kwonlyargcount
+# property, which changes the way *.pyc files are unmarshalled
+def _gen_has_kwonlyargcount(repo, magic_info):
+    has_kwonlyargcount = []
+    for rev, magic, version in magic_info:
+        data = repo.revision_of_file('Python/marshal.c', rev)
+        has_kwonlyargcount.append('co_kwonlyargcount' in data)
+    return has_kwonlyargcount
+
 # Represents a revision of the Python interpreter
 class _Revision:
-    def __init__(self, magic_info, opcodes):
+    def __init__(self, magic_info, opcodes, has_kwonlyargcount):
         self.mercurial_revision, self.magic, self.python_version = magic_info
+        self.has_kwonlyargcount = has_kwonlyargcount
 
         # Note that self.name_to_opcode contains a superset of the information
         # available in self.opcode_to_name. For example, it will contain the
@@ -193,19 +208,20 @@ def _differentiate_opcodes_by_argument(revisions):
                 opcode = rev.name_to_opcode.get(name)
                 if opcode is not None and rev.has_argument(name):
                     del rev.name_to_opcode[name]
-                    name += '_ARG'
-                    rev.name_to_opcode[name] = opcode
-                    rev.opcode_to_name[opcode] = name
-                    opcode_names.add(name)
+                    del rev.opcode_to_name[opcode]
+                    name_arg = name + '_ARG'
+                    rev.name_to_opcode[name_arg] = opcode
+                    rev.opcode_to_name[opcode] = name_arg
+                    opcode_names.add(name_arg)
 
     # Now that the argument status of each name is consistent across all
     # revisions, we can make one set where membership means that opcode
     # has an argument in all revisions
-    have_argument = set()
+    has_argument = set()
     for rev in revisions:
-        have_argument |= set(name for name in rev.opcode_to_name.values() if rev.has_argument(name))
+        has_argument |= set(name for name in rev.opcode_to_name.values() if rev.has_argument(name))
 
-    return opcode_names, have_argument
+    return opcode_names, has_argument
 
 # Return gen() but cache the results in the file named cache
 def _get_cached(cache, gen):
@@ -221,8 +237,9 @@ def _get_cached(cache, gen):
 _repo = _PythonRepo()
 _magic_info = _get_cached('magic_info.pickle', lambda: _gen_magic_info(_repo))
 _opcodes = _get_cached('opcodes.pickle', lambda: _gen_opcodes(_repo, _magic_info))
-_revisions = sorted([_Revision(m, o) for m, o in zip(_magic_info, _opcodes)], key=lambda x: x.magic)
-opcodes, have_argument = _differentiate_opcodes_by_argument(_revisions)
+_has_kwonlyargcount = _get_cached('has_kwonlyargcount.pickle', lambda: _gen_has_kwonlyargcount(_repo, _magic_info))
+_revisions = sorted([_Revision(_m, _o, _h) for _m, _o, _h in zip(_magic_info, _opcodes, _has_kwonlyargcount)], key=lambda x: x.magic)
+opcodes, _has_argument = _differentiate_opcodes_by_argument(_revisions)
 
 # Return the revision with the given magic number. Just in case we try to
 # disassemble a *.pyc file with a magic version that doesn't match any ever
@@ -233,18 +250,43 @@ def _magic_to_revision(magic):
         if rev.magic >= magic:
             return rev
 
-# Map magic numbers to revisions
+def has_argument(opcode):
+    '''
+    Returns True if opcode takes an argument when represented in bytecode,
+    otherwise returns False.
+    '''
+    return opcode in _has_argument
+
+def has_kwonlyargcount(magic):
+    '''
+    Returns True if the code objects in *.pyc files with the given magic
+    number will have the co_kwonlyargcount property, otherwise returns
+    False.
+    '''
+    revision = _magic_to_revision(magic)
+    return revision and revision.has_kwonlyargcount
+
 def from_bytecode(bytecode, magic):
+    '''
+    Given bytecode, an 8-bit integer, and magic, the 32-bit magic number
+    from a marshalled *.pyc file, produce a string with the name of the
+    opcode or None for an invalid bytecode.
+    '''
     revision = _magic_to_revision(magic)
     if revision and bytecode in revision.opcode_to_name:
         return revision.opcode_to_name[bytecode]
 
-# Map magic numbers to Python version strings (the contents of PY_VERSION)
 def python_version_from_magic(magic):
+    '''
+    Returns a string with the Python interpreter version ("2.7b2+" for
+    example). Note that there isn't a one-to-one mapping between magic
+    number and version string. It is most useful for obtaining a human
+    readable interpretation of a magic number.
+    '''
     revision = _magic_to_revision(magic)
     if revision:
         return revision.python_version
 
 # Add a global name for each opcode to allow the syntax "op.OPCODE"
-for name in opcodes:
-    globals()[name] = name
+for _name in opcodes:
+    globals()[_name] = _name
