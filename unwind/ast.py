@@ -23,10 +23,6 @@ class Node:
     def accept(self, visitor):
         return getattr(visitor, 'visit_' + self.__class__.__name__)(self)
 
-    def __eq__(self, other):
-        return isinstance(other, self.__class__) and \
-            all(getattr(self, f) == getattr(other, f) for f in self.fields)
-
 class _Collection(Node):
     def __init__(self, *nodes):
         self.nodes = list(nodes)
@@ -37,9 +33,6 @@ class _Collection(Node):
     def __str__(self):
         fields = ',\n'.join(str(n) for n in self.nodes)
         return self.__class__.__name__ + ('(\n%s\n)' % _indent(fields, '    ') if fields else '()')
-
-    def __eq__(self, other):
-        return isinstance(other, self.__class__) and self.nodes == other.nodes
 
 class Block(_Collection):
     pass
