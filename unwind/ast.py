@@ -119,12 +119,11 @@ class Assign(Node):
 class Attr(Node):
     fields = ['left', 'right']
 
-# a node visitor that visits all nodes but does nothing
+# A node visitor that visits all nodes but does nothing
 class DefaultVisitor:
     def visit_children(self, node):
         for c in node.children():
             c.accept(self)
-        return node
 
     def visit_Block(self, node): return self.visit_children(node)
     def visit_Tuple(self, node): return self.visit_children(node)
@@ -153,7 +152,50 @@ class DefaultVisitor:
     def visit_Assign(self, node): return self.visit_children(node)
     def visit_Attr(self, node): return self.visit_children(node)
 
-# a node visitor that clones all visited nodes, can be used as a base for other visitors
+# A node visitor where each visit method returns the node, allowing subclasses
+# to replace nodes easily
+class ReplacementVisitor:
+    def replace_collection(self, node):
+        node.nodes = [n.accept(self) for n in node.nodes]
+        return node
+
+    def visit_Block(self, node): return self.replace_collection(node)
+    def visit_Tuple(self, node): return self.replace_collection(node)
+    def visit_List(self, node): return self.replace_collection(node)
+    def visit_Print(self, node): return self.replace_collection(node)
+    def visit_PrintNoNewline(self, node): return self.replace_collection(node)
+    def visit_Global(self, node): return self.replace_collection(node)
+    def visit_Dict(self, node): return self.replace_collection(node)
+
+    def replace_fields(self, node):
+        for f in node.fields:
+            n = getattr(node, f)
+            if isinstance(n, Node):
+                setattr(node, f, n.accept(self))
+        return node
+
+    def visit_DictItem(self, node): return self.replace_fields(node)
+    def visit_Opcode(self, node): return self.replace_fields(node)
+    def visit_Const(self, node): return self.replace_fields(node)
+    def visit_Docstr(self, node): return self.replace_fields(node)
+    def visit_Comment(self, node): return self.replace_fields(node)
+    def visit_Ident(self, node): return self.replace_fields(node)
+    def visit_Del(self, node): return self.replace_fields(node)
+    def visit_Pass(self, node): return self.replace_fields(node)
+    def visit_Return(self, node): return self.replace_fields(node)
+    def visit_If(self, node): return self.replace_fields(node)
+    def visit_Else(self, node): return self.replace_fields(node)
+    def visit_Unary(self, node): return self.replace_fields(node)
+    def visit_Binary(self, node): return self.replace_fields(node)
+    def visit_Slice(self, node): return self.replace_fields(node)
+    def visit_Call(self, node): return self.replace_fields(node)
+    def visit_Raise(self, node): return self.replace_fields(node)
+    def visit_SliceRange(self, node): return self.replace_fields(node)
+    def visit_Assign(self, node): return self.replace_fields(node)
+    def visit_Attr(self, node): return self.replace_fields(node)
+
+# A node visitor that clones all visited nodes, can be used as a base for other
+# visitor subclasses
 class CloneVisitor:
     def clone_collection(self, node):
         return node.__class__(*[n.accept(self) for n in node.nodes])

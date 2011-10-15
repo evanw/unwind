@@ -43,7 +43,7 @@ _relative_jumping_opcodes = [op.JUMP_IF_FALSE, op.JUMP_IF_TRUE, op.JUMP_FORWARD]
 _jumping_opcodes = _absolute_jumping_opcodes + _relative_jumping_opcodes
 _exiting_opcodes = [op.RETURN_VALUE, op.RETURN_NONE, op.RAISE_EXCEPTION, op.RAISE_VARARGS]
 
-class ComputeBasicBlocks(CloneVisitor):
+class ComputeBasicBlocks(ReplacementVisitor):
     def run(self, node):
         return node.accept(self)
 
@@ -133,9 +133,9 @@ class ComputeBasicBlocks(CloneVisitor):
             delattr(b, 'dominators')
 
     def visit_Block(self, node):
-        nodes = self.create_basic_blocks(node.nodes)
-        self.compute_dominators(nodes, nodes[0])
-        return Block(*nodes)
+        node.nodes = self.create_basic_blocks(node.nodes)
+        self.compute_dominators(node.nodes, node.nodes[0])
+        return node
 
 # Temporary node added to the AST by ComputeBasicBlocks to store basic blocks.
 # A basic block is a unit of control flow. Control flow only enters a basic
@@ -158,9 +158,17 @@ class BasicBlock(Node):
 # Reconstruct control structures and remove temporary BasicBlock instances.
 ################################################################################
 
-class DecompileControlStructures(CloneVisitor):
+class DecompileControlStructures(ReplacementVisitor):
     def run(self, node):
         return node.accept(self)
 
+    def build_if_statements(self, block):
+        pass
+
+    def visit_Block(self, node):
+        self.replace_collection(node)
+        self.build_if_statements(node)
+        return node
+
     def visit_BasicBlock(self, node):
-        return BasicBlock(node.start, [n.accept(self) for n in node.nodes], node.next, node.dominator)
+        return self.replace_collection(node)
