@@ -1,11 +1,8 @@
 '''
-disasm.disassemble(file_object)
-    Disassemble a python module from file_object, an open file object
-    containing a *.pyc file. Returns a disasm.Module with the disassembly
-    or raises a disasm.DisassemblerException if there was an error.
-
-disasm.dis(path)
-    Shortcut for disasm.disassemble(open(path, 'rb')).
+disasm.disassemble(path)
+    Disassemble a python module from a *.pyc file. Returns a disasm.Module with
+    the disassembly or raises a disasm.DisassemblerException if there was an
+    error.
 
 disasm.Module, disasm.CodeObject, disasm.Opcode
     Used to represent the disassembled module. Constant values are
@@ -22,19 +19,13 @@ import sys
 import time
 import struct
 
-def dis(path):
-    '''
-    Shortcut for disasm.disassemble(open(path, 'rb')).
-    '''
-    return disassemble(open(path, 'rb'))
-
-def disassemble(file_object):
+def disassemble(path):
     '''
     Disassemble a python module from file_object, an open file object
     containing a *.pyc file. Returns a disasm.Module with the disassembly
     or raises a disasm.DisassemblerException if there was an error.
     '''
-    return _Disassembler().disassemble(file_object)
+    return _Disassembler().disassemble(open(path, 'rb'))
 
 class DisassemblerException(Exception):
     '''
@@ -334,17 +325,3 @@ class _Disassembler:
 
         else:
             raise DisassemblerException('Cannot unmarshal unknown type 0x%02X' % type)
-
-# Provide a command-line disassembly tool
-if __name__ == '__main__':
-    if len(sys.argv) == 1:
-        sys.exit('usage: python disasm.py *.pyc')
-
-    dis = _Disassembler()
-    for pyc in sys.argv[1:]:
-        print('\n# disassembling: ' + pyc)
-        try:
-            module = dis.disassemble(open(pyc, 'rb'))
-            print(module)
-        except DisassemblerException:
-            print('# error: ' + str(sys.exc_info()[1]))

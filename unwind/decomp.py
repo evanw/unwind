@@ -1,15 +1,13 @@
-import unwind.disasm as disasm
-from unwind.passes import *
+from unwind.disasm import disassemble
+import unwind.passes as _passes
 
 def decompile(path):
     passes = [
-        CodeObjectsToNodes(),
-        ComputeBasicBlocks(),
-        DecompileControlStructures(),
+        _passes.CodeObjectsToNodes(),
+        _passes.ComputeBasicBlocks(),
+        _passes.DecompileControlStructures(),
     ]
-    result = disasm.dis(path)
+    result = disassemble(path)
     for p in passes:
         result = p.run(result)
     return result
-
-print decompile('temp.pyc')
