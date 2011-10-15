@@ -17,7 +17,7 @@ disasm.DisassemblerException
     of the error.
 '''
 
-import pydis.op as op
+import unwind.op as op
 import sys
 import time
 import struct
@@ -48,18 +48,20 @@ class Opcode:
     Represents a disassembled opcode.
 
         self.offset = number of bytes from start of code object
+        self.size = number of bytes used by this opcode
         self.opcode = string with opcode name
         self.argument = Python object with argument, will be None for
                         opcodes without arguments
     '''
 
-    def __init__(self, offset, opcode, argument):
+    def __init__(self, offset, size, opcode, argument):
         self.offset = offset
+        self.size = size
         self.opcode = opcode
         self.argument = argument
 
     def __repr__(self):
-        return 'Opcode(offset = %s, opcode = %s, argument = %s)' % (repr(self.offset), repr(self.opcode), repr(self.argument))
+        return 'Opcode(offset = %s, size = %s, opcode = %s, argument = %s)' % (repr(self.offset), repr(self.size), repr(self.opcode), repr(self.argument))
 
 class CodeObject:
     '''
@@ -325,7 +327,7 @@ class _Disassembler:
                         arg = argument
 
                 # Record disassembled opcode
-                co.opcodes.append(Opcode(offset, opcode, arg))
+                co.opcodes.append(Opcode(offset, i - offset, opcode, arg))
                 argument = 0
 
             return co
