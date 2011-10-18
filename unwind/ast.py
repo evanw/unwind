@@ -1,8 +1,8 @@
-# helper function to indent a chunk of text
+# Helper function to indent a chunk of text
 def _indent(text, indent):
     return '\n'.join(indent + line for line in text.split('\n'))
 
-# abstract base class for all nodes
+# Abstract base class for all nodes
 class Node:
     def __init__(self, *args):
         assert len(self.fields) == len(args)
@@ -23,6 +23,15 @@ class Node:
     def accept(self, visitor):
         return getattr(visitor, 'visit_' + self.__class__.__name__)(self)
 
+    def __hash__(self):
+        # Note: this means separate nodes with equivalent contents will *not*
+        # likely fall in the same bin and so cannot be used in sets
+        return id(self)
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and \
+            all(getattr(self, f) == getattr(other, f) for f in self.fields)
+
 class _Collection(Node):
     def __init__(self, *nodes):
         self.nodes = list(nodes)
@@ -33,6 +42,14 @@ class _Collection(Node):
     def __str__(self):
         fields = ',\n'.join(str(n) for n in self.nodes)
         return self.__class__.__name__ + ('(\n%s\n)' % _indent(fields, '    ') if fields else '()')
+
+    def __hash__(self):
+        # Note: this means separate nodes with equivalent contents will *not*
+        # likely fall in the same bin and so cannot be used in sets
+        return id(self)
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.nodes == other.nodes
 
 class Block(_Collection):
     pass
